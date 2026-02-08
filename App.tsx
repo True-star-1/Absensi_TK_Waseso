@@ -11,7 +11,8 @@ import {
   LogOut,
   ClipboardCheck as AppIcon,
   Menu,
-  X
+  X,
+  CloudCog
 } from 'lucide-react';
 import Dashboard from './components/Dashboard';
 import AttendanceForm from './components/AttendanceForm';
@@ -23,40 +24,82 @@ import { DataProvider, useData } from './DataContext'; // Import Provider
 
 const SyncPage = () => {
   const { refreshData } = useData();
+  const [isSyncing, setIsSyncing] = useState(false);
   
   const handleSync = async () => {
-    Swal.fire({
-      title: 'Sinkronisasi...',
-      text: 'Memastikan data terbaru dari server...',
-      allowOutsideClick: false,
-      didOpen: () => {
-        Swal.showLoading();
-      }
+    setIsSyncing(true);
+    // Tampilkan toast loading halus
+    const toast = Swal.mixin({
+        toast: true,
+        position: 'top-end',
+        showConfirmButton: false,
+        timer: 3000,
+        timerProgressBar: true,
+    });
+    
+    toast.fire({
+        icon: 'info',
+        title: 'Menyinkronkan data...'
     });
 
-    await refreshData();
-    
-    Swal.fire({
-      title: 'Berhasil!',
-      text: 'Aplikasi telah sinkron sepenuhnya.',
-      icon: 'success',
-      confirmButtonColor: '#0EA5E9'
-    });
+    try {
+        await refreshData();
+        
+        // Sedikit delay buatan agar terasa prosesnya (opsional, untuk UX)
+        await new Promise(resolve => setTimeout(resolve, 800));
+
+        Swal.fire({
+            title: 'Sinkronisasi Selesai!',
+            text: 'Semua data telah diperbarui dari cloud.',
+            icon: 'success',
+            confirmButtonColor: '#0EA5E9',
+            confirmButtonText: 'OKE SIAP',
+            customClass: {
+                popup: 'rounded-[32px] p-8',
+                confirmButton: 'rounded-xl font-black text-xs uppercase tracking-widest px-8 py-3.5'
+            }
+        });
+    } catch (e) {
+        Swal.fire('Gagal', 'Terjadi kesalahan jaringan.', 'error');
+    } finally {
+        setIsSyncing(false);
+    }
   };
 
   return (
-    <div className="h-[60vh] flex flex-col items-center justify-center text-center animate-in p-6">
-      <div className="w-14 h-14 bg-sky-100 text-sky-600 rounded-2xl flex items-center justify-center mb-5 shadow-sm">
-        <RefreshCw size={28} />
+    <div className="h-[75vh] flex flex-col items-center justify-center text-center animate-in p-6">
+      
+      <div className="bg-white p-10 rounded-[48px] border border-slate-100 shadow-xl shadow-slate-100/50 max-w-sm w-full relative overflow-hidden group">
+         {/* Decorative Background Elements */}
+         <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-[#38BDF8] to-[#0284C7]"></div>
+         <div className="absolute -bottom-10 -right-10 w-32 h-32 bg-sky-50 rounded-full blur-3xl opacity-60"></div>
+
+         <div className="relative z-10 flex flex-col items-center">
+            <div className={`w-20 h-20 bg-sky-50 text-[#0EA5E9] rounded-[24px] flex items-center justify-center mb-6 shadow-sm border border-sky-100 transition-all duration-1000 ${isSyncing ? 'animate-spin' : 'group-hover:scale-110'}`}>
+                <RefreshCw size={36} strokeWidth={2.5} />
+            </div>
+            
+            <h2 className="text-2xl font-black text-slate-800 tracking-tight mb-2">Sinkronisasi Cloud</h2>
+            
+            <p className="text-slate-400 text-sm font-medium leading-relaxed mb-8 max-w-[240px]">
+                Data dicadangkan secara <span className="text-sky-500 font-bold">real-time</span> ke database.
+            </p>
+            
+            <button 
+                onClick={handleSync}
+                disabled={isSyncing}
+                className="w-full py-4 bg-[#38BDF8] hover:bg-[#0EA5E9] disabled:bg-slate-200 disabled:text-slate-400 text-white rounded-2xl font-black text-xs shadow-lg shadow-sky-200 hover:shadow-sky-300 transition-all active:scale-95 uppercase tracking-[0.15em]"
+            >
+                {isSyncing ? 'MEMPROSES...' : 'SINKRON MANUAL'}
+            </button>
+            
+            <div className="mt-6 flex items-center gap-2 text-[10px] font-bold text-emerald-500 bg-emerald-50 px-3 py-1.5 rounded-full">
+                <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></div>
+                SYSTEM ONLINE
+            </div>
+         </div>
       </div>
-      <h2 className="text-lg font-black text-slate-800 tracking-tight">Sinkronisasi Cloud</h2>
-      <p className="text-slate-400 text-[11px] font-medium mt-1 max-w-[200px]">Data disinkronkan otomatis di latar belakang.</p>
-      <button 
-        onClick={handleSync}
-        className="mt-6 w-full max-w-[200px] py-3 bg-[#38BDF8] hover:bg-[#0EA5E9] text-white rounded-xl font-black text-xs shadow-lg shadow-sky-100 transition-all active:scale-95 uppercase tracking-widest"
-      >
-        Paksa Sinkron
-      </button>
+
     </div>
   );
 };

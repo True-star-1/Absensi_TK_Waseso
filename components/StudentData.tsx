@@ -1,12 +1,12 @@
 
 import React, { useState, useMemo } from 'react';
-import { Search, UserPlus, Pencil, Trash2, Filter, Users } from 'lucide-react';
+import { Search, UserPlus, Pencil, Trash2, Filter, Users, School } from 'lucide-react';
 import Swal from 'sweetalert2';
 import { supabase } from '../supabase';
 import { useData } from '../DataContext';
 
 const StudentData: React.FC = () => {
-  const { students, classes, loading } = useData();
+  const { students, classes, loading, refreshData } = useData(); // Ambil refreshData
   const [filter, setFilter] = useState('SEMUA');
   const [search, setSearch] = useState('');
 
@@ -17,81 +17,137 @@ const StudentData: React.FC = () => {
 
   const showStudentModal = async (existingStudent?: any) => {
     const isEdit = !!existingStudent;
-    const { value: formValues } = await Swal.fire({
-      title: `
-        <div class="flex items-center gap-3 justify-center">
-          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-[#0284C7]"><path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z"></path><path d="m9 12 2 2 4-4"></path></svg>
-          <h3 class="font-black text-slate-800">${isEdit ? 'Edit Siswa' : 'Tambah Siswa'}</h3>
-        </div>`,
+    
+    await Swal.fire({
+      title: `<span class="font-black text-slate-800 text-xl">${isEdit ? 'Ubah Data Siswa' : 'Tambah Siswa Baru'}</span>`,
       html: `
-        <div class="space-y-4 text-left text-xs font-bold text-slate-400 mt-6">
-          <div>
-            <label for="swal-nis" class="uppercase tracking-widest">NOMOR INDUK (NIS/NISN)</label>
-            <input id="swal-nis" class="mt-1 w-full p-4 bg-sky-50 border border-[#E0F2FE] rounded-2xl outline-none focus:border-[#38BDF8] text-sm font-bold text-slate-700" placeholder="Contoh: 2024001" value="${existingStudent?.nis || ''}">
+        <div class="flex flex-col gap-4 text-left mt-2">
+          
+          <!-- Input NIS -->
+          <div class="relative group">
+            <label for="swal-nis" class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 block ml-1">Nomor Induk (NIS/NISN)</label>
+            <div class="relative">
+              <div class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
+                <span class="text-slate-400 text-xs font-bold">#</span>
+              </div>
+              <input id="swal-nis" type="number" class="w-full pl-9 pr-4 py-3.5 bg-slate-50 border-2 border-slate-100 rounded-xl outline-none focus:border-[#38BDF8] focus:bg-white text-sm font-bold text-slate-700 transition-all placeholder:text-slate-300" placeholder="0000" value="${existingStudent?.nis || ''}">
+            </div>
           </div>
-          <div>
-            <label for="swal-name" class="uppercase tracking-widest">NAMA LENGKAP SISWA</label>
-            <input id="swal-name" class="mt-1 w-full p-4 bg-sky-50 border border-[#E0F2FE] rounded-2xl outline-none focus:border-[#38BDF8] text-sm font-bold text-slate-700" placeholder="Nama Lengkap Anak" value="${existingStudent?.name || ''}">
+
+          <!-- Input Nama -->
+          <div class="relative group">
+            <label for="swal-name" class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 block ml-1">Nama Lengkap</label>
+            <input id="swal-name" class="w-full px-4 py-3.5 bg-slate-50 border-2 border-slate-100 rounded-xl outline-none focus:border-[#38BDF8] focus:bg-white text-sm font-bold text-slate-700 transition-all placeholder:text-slate-300" placeholder="Contoh: Ananda Pratama" value="${existingStudent?.name || ''}">
           </div>
-          <div>
-            <label for="swal-class" class="uppercase tracking-widest">KELOMPOK BELAJAR / KELAS</label>
-            <select id="swal-class" class="mt-1 w-full p-4 bg-sky-50 border border-[#E0F2FE] rounded-2xl outline-none focus:border-[#38BDF8] text-sm font-bold text-slate-700 appearance-none">
-              <option value="">-- Pilih Kelas --</option>
-              ${classes.map(c => `<option value="${c.name}" ${existingStudent?.class_name === c.name ? 'selected' : ''}>${c.name}</option>`).join('')}
-            </select>
+
+          <!-- Input Kelas -->
+          <div class="relative group">
+            <label for="swal-class" class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 block ml-1">Kelas / Rombel</label>
+            <div class="relative">
+               <select id="swal-class" class="w-full px-4 py-3.5 bg-slate-50 border-2 border-slate-100 rounded-xl outline-none focus:border-[#38BDF8] focus:bg-white text-sm font-bold text-slate-700 transition-all appearance-none cursor-pointer">
+                <option value="" disabled ${!existingStudent ? 'selected' : ''}>-- Pilih Kelas --</option>
+                ${classes.map(c => `<option value="${c.name}" ${existingStudent?.class_name === c.name ? 'selected' : ''}>${c.name}</option>`).join('')}
+              </select>
+              <div class="absolute inset-y-0 right-0 pr-4 flex items-center pointer-events-none text-slate-400">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+              </div>
+            </div>
           </div>
+
         </div>
       `,
       showCancelButton: true,
       confirmButtonText: 'Simpan Data',
       cancelButtonText: 'Batal',
       confirmButtonColor: '#0EA5E9',
+      cancelButtonColor: '#fff',
+      focusConfirm: false,
       customClass: { 
-        popup: 'rounded-[32px] p-8',
-        confirmButton: 'rounded-2xl font-black text-sm px-8 py-4',
-        cancelButton: 'rounded-2xl font-black text-sm px-8 py-4 bg-slate-50 !text-slate-400'
+        popup: 'rounded-[32px] p-8 shadow-2xl border border-slate-100',
+        confirmButton: 'rounded-xl font-black text-xs uppercase tracking-widest px-8 py-3.5 shadow-lg shadow-sky-200',
+        cancelButton: 'rounded-xl font-black text-xs uppercase tracking-widest px-8 py-3.5 text-slate-400 hover:bg-slate-50 border border-slate-100'
       },
-      preConfirm: () => ({
-        nis: (document.getElementById('swal-nis') as HTMLInputElement).value,
-        name: (document.getElementById('swal-name') as HTMLInputElement).value,
-        class_name: (document.getElementById('swal-class') as HTMLSelectElement).value,
-      })
+      preConfirm: async () => {
+        const nis = (document.getElementById('swal-nis') as HTMLInputElement).value;
+        const name = (document.getElementById('swal-name') as HTMLInputElement).value;
+        const class_name = (document.getElementById('swal-class') as HTMLSelectElement).value;
+
+        if (!nis || !name || !class_name) {
+          Swal.showValidationMessage('Mohon lengkapi semua kolom bertanda!');
+          return false;
+        }
+
+        const payload = { nis, name, class_name };
+        
+        try {
+          let error;
+          if (isEdit) {
+            ({ error } = await supabase.from('students').update(payload).eq('id', existingStudent.id));
+          } else {
+            ({ error } = await supabase.from('students').insert([payload]));
+          }
+
+          if (error) {
+             if (error.code === '23505') {
+                 Swal.showValidationMessage('NIS sudah terdaftar.');
+             } else {
+                 Swal.showValidationMessage(`Error: ${error.message}`);
+             }
+             return false;
+          }
+          return true;
+        } catch (err: any) {
+           Swal.showValidationMessage(err.message);
+           return false;
+        }
+      }
+    }).then(async (result) => {
+      if (result.isConfirmed) {
+        // INSTANT UPDATE: Panggil refreshData segera setelah sukses
+        await refreshData();
+        
+        Swal.fire({
+          title: 'Berhasil!',
+          text: isEdit ? 'Data siswa diperbarui.' : 'Siswa baru ditambahkan.',
+          icon: 'success',
+          timer: 1500,
+          showConfirmButton: false
+        });
+      }
     });
-
-    if (formValues && formValues.name && formValues.class_name && formValues.nis) {
-      const payload = { nis: formValues.nis, name: formValues.name, class_name: formValues.class_name };
-      let error;
-      if (isEdit) {
-        ({ error } = await supabase.from('students').update(payload).eq('id', existingStudent.id));
-      } else {
-        ({ error } = await supabase.from('students').insert([payload]));
-      }
-
-      if (error) {
-        Swal.fire('Gagal', 'NIS mungkin sudah terdaftar atau tidak valid.', 'error');
-      }
-      // DataContext akan otomatis menangkap perubahan lewat realtime subscription
-    } else if (formValues) {
-      Swal.fire('Gagal', 'Semua kolom wajib diisi.', 'error');
-    }
   };
 
   const handleDelete = async (id: string, name: string) => {
     const res = await Swal.fire({
-      title: 'Hapus?',
-      text: `Siswa bernama ${name} akan dihapus.`,
+      title: 'Hapus Siswa?',
+      html: `Data siswa <span class="font-bold text-slate-800">${name}</span> akan dihapus permanen.`,
       icon: 'warning',
       showCancelButton: true,
       confirmButtonColor: '#EF4444',
+      cancelButtonColor: '#fff',
       confirmButtonText: 'Ya, Hapus',
-      cancelButtonText: 'Batal'
+      cancelButtonText: 'Batal',
+      customClass: {
+        popup: 'rounded-[32px] p-8',
+        confirmButton: 'rounded-xl font-black text-xs uppercase tracking-widest px-6 py-3',
+        cancelButton: 'rounded-xl font-black text-xs uppercase tracking-widest px-6 py-3 text-slate-400 hover:bg-slate-50 border border-slate-100'
+      }
     });
+
     if (res.isConfirmed) {
       const { error } = await supabase.from('students').delete().eq('id', id);
       if (error) {
-        Swal.fire('Gagal', 'Gagal menghapus data siswa.', 'error');
+        Swal.fire('Gagal', 'Terjadi kesalahan saat menghapus.', 'error');
+      } else {
+        await refreshData(); // INSTANT UPDATE
+        Swal.fire({
+             title: 'Terhapus!',
+             text: 'Data siswa telah dihapus.',
+             icon: 'success',
+             timer: 1500,
+             showConfirmButton: false
+        });
       }
-      // DataContext menangani update UI
     }
   };
 
@@ -100,53 +156,72 @@ const StudentData: React.FC = () => {
   if (loading && students.length === 0) return <div className="p-10 text-center text-slate-400 font-bold animate-pulse">Memuat data siswa...</div>;
 
   return (
-    <div className="animate-in fade-in duration-500">
+    <div className="animate-in fade-in duration-500 pb-20">
       <header className="mb-8 flex flex-col md:flex-row md:items-end justify-between gap-6">
         <div>
           <h2 className="text-2xl md:text-3xl font-black text-slate-800 tracking-tight">Anak Didik</h2>
           <p className="text-slate-400 font-medium text-sm">Manajemen daftar murid TK.</p>
         </div>
-        <button onClick={() => showStudentModal()} className="flex items-center gap-2 px-6 py-4 bg-[#38BDF8] hover:bg-[#0EA5E9] text-white rounded-2xl font-bold shadow-lg shadow-sky-100 transition-all active:scale-95">
-          <UserPlus size={18} /> Tambah Murid
+        <button onClick={() => showStudentModal()} className="flex items-center gap-2 px-6 py-4 bg-[#38BDF8] hover:bg-[#0EA5E9] text-white rounded-2xl font-bold shadow-lg shadow-sky-100 transition-all active:scale-95 group">
+          <UserPlus size={18} className="group-hover:scale-110 transition-transform" /> Tambah Murid
         </button>
       </header>
 
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
-        <div className="md:col-span-3 relative">
-          <Search className="absolute left-5 top-1/2 -translate-y-1/2 text-sky-300" size={18} />
-          <input type="text" placeholder="Cari nama siswa..." className="w-full pl-12 pr-6 py-4 bg-white border border-[#E0F2FE] rounded-2xl outline-none font-bold text-slate-600 text-sm focus:border-[#38BDF8] shadow-sm transition-all" value={search} onChange={(e) => setSearch(e.target.value)} />
+        <div className="md:col-span-3 relative group">
+          <Search className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-[#38BDF8] transition-colors" size={20} />
+          <input type="text" placeholder="Cari nama siswa atau NIS..." className="w-full pl-14 pr-6 py-4 bg-white border-2 border-slate-50 rounded-2xl outline-none font-bold text-slate-600 text-sm focus:border-[#38BDF8] shadow-sm transition-all placeholder:font-medium placeholder:text-slate-300" value={search} onChange={(e) => setSearch(e.target.value)} />
         </div>
-        <div className="relative">
-          <Filter className="absolute left-5 top-1/2 -translate-y-1/2 text-sky-300 pointer-events-none" size={18} />
-          <select value={filter} onChange={(e) => setFilter(e.target.value)} className="w-full pl-12 pr-6 py-4 bg-white border border-[#E0F2FE] rounded-2xl outline-none font-bold text-slate-600 text-sm appearance-none shadow-sm cursor-pointer">
+        <div className="relative group">
+          <Filter className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none group-focus-within:text-[#38BDF8] transition-colors" size={18} />
+          <select value={filter} onChange={(e) => setFilter(e.target.value)} className="w-full pl-12 pr-10 py-4 bg-white border-2 border-slate-50 rounded-2xl outline-none font-bold text-slate-600 text-sm appearance-none shadow-sm cursor-pointer focus:border-[#38BDF8] transition-all">
             <option value="SEMUA">Semua Kelas</option>
             {classes.map(c => <option key={c.name} value={c.name}>{c.name}</option>)}
           </select>
+           <div className="absolute inset-y-0 right-5 flex items-center pointer-events-none text-slate-300">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+           </div>
         </div>
       </div>
 
-      <div className="bg-white rounded-[32px] border border-[#E0F2FE] shadow-sm">
+      <div className="bg-white rounded-[32px] border border-slate-100 shadow-sm overflow-hidden">
         {/* Desktop Table View */}
         <div className="hidden md:block overflow-x-auto">
           <table className="w-full min-w-[600px]">
-            <thead className="bg-sky-50/50">
-              <tr className="text-left border-b border-[#E0F2FE]">
-                <th className="py-5 px-8 text-[10px] font-black text-slate-400 uppercase tracking-widest">Inisial</th>
-                <th className="py-5 px-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Informasi Murid</th>
+            <thead className="bg-slate-50/80">
+              <tr className="text-left border-b border-slate-100">
+                <th className="py-5 px-8 text-[10px] font-black text-slate-400 uppercase tracking-widest">Profil</th>
+                <th className="py-5 px-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Identitas</th>
                 <th className="py-5 px-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Kelas</th>
                 <th className="py-5 px-8 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Aksi</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-[#E0F2FE]">
+            <tbody className="divide-y divide-slate-50">
               {filteredStudents.map((student) => (
-                <tr key={student.id} className="group hover:bg-sky-50/50 transition-colors">
-                  <td className="py-4 px-8"><div className="w-10 h-10 bg-sky-100 text-[#0284C7] rounded-xl flex items-center justify-center font-bold">{getInitial(student.name)}</div></td>
-                  <td className="py-4 px-4"><span className="font-bold text-slate-700 block tracking-tight uppercase">{student.name}</span><span className="text-[10px] text-emerald-500 font-black uppercase tracking-wider">Aktif</span></td>
-                  <td className="py-4 px-4"><span className="px-3 py-1 bg-sky-100 text-[#0284C7] rounded-lg text-[9px] font-black uppercase tracking-widest">{student.class_name}</span></td>
+                <tr key={student.id} className="group hover:bg-sky-50/30 transition-colors">
                   <td className="py-4 px-8">
-                    <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <button onClick={() => showStudentModal(student)} className="p-2 text-[#0EA5E9] hover:bg-sky-100 rounded-xl"><Pencil size={16} /></button>
-                      <button onClick={() => handleDelete(student.id, student.name)} className="p-2 text-[#EF4444] hover:bg-red-50 rounded-xl"><Trash2 size={16} /></button>
+                      <div className="w-12 h-12 bg-sky-100 text-[#0284C7] rounded-2xl flex items-center justify-center font-black text-lg shadow-sm border border-sky-200">
+                        {getInitial(student.name)}
+                      </div>
+                  </td>
+                  <td className="py-4 px-4">
+                      <span className="font-bold text-slate-700 block text-base tracking-tight">{student.name}</span>
+                      <span className="text-[11px] font-bold text-slate-400 flex items-center gap-1">
+                         <span className="tracking-wider">NIS: {student.nis || '-'}</span>
+                         <span className="w-1 h-1 rounded-full bg-slate-300"></span>
+                         <span className="text-emerald-500 uppercase tracking-wider text-[9px]">Aktif</span>
+                      </span>
+                  </td>
+                  <td className="py-4 px-4">
+                      <div className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 text-slate-600 rounded-lg border border-slate-200">
+                        <School size={12} />
+                        <span className="text-[10px] font-black uppercase tracking-widest">{student.class_name}</span>
+                      </div>
+                  </td>
+                  <td className="py-4 px-8">
+                    <div className="flex items-center justify-end gap-2 opacity-60 group-hover:opacity-100 transition-all">
+                      <button onClick={() => showStudentModal(student)} className="p-2.5 text-[#0EA5E9] bg-sky-50 hover:bg-sky-100 rounded-xl transition-colors" title="Edit"><Pencil size={16} /></button>
+                      <button onClick={() => handleDelete(student.id, student.name)} className="p-2.5 text-[#EF4444] bg-red-50 hover:bg-red-100 rounded-xl transition-colors" title="Hapus"><Trash2 size={16} /></button>
                     </div>
                   </td>
                 </tr>
@@ -157,22 +232,22 @@ const StudentData: React.FC = () => {
 
         {/* Mobile Card View */}
         <div className="block md:hidden">
-            <div className="divide-y divide-[#E0F2FE]">
+            <div className="divide-y divide-slate-100">
             {filteredStudents.map((student) => (
-                <div key={student.id} className="p-4 flex items-center justify-between gap-3">
+                <div key={student.id} className="p-5 flex items-center justify-between gap-3 active:bg-slate-50 transition-colors">
                     <div className="flex items-center gap-4">
-                        <div className="w-10 h-10 bg-sky-100 text-[#0284C7] rounded-xl flex items-center justify-center font-bold flex-shrink-0">{getInitial(student.name)}</div>
-                        <div className="flex-1">
-                            <p className="font-bold text-slate-700 block tracking-tight text-sm leading-tight uppercase">{student.name}</p>
-                            <div className="flex items-center gap-2 mt-1.5">
-                                <span className="text-[9px] text-emerald-500 font-black uppercase tracking-wider bg-emerald-50 px-2 py-0.5 rounded-md">Aktif</span>
-                                <span className="px-2 py-0.5 bg-sky-100 text-[#0284C7] rounded-md text-[8px] font-black uppercase tracking-widest">{student.class_name}</span>
+                        <div className="w-12 h-12 bg-sky-100 text-[#0284C7] rounded-2xl flex items-center justify-center font-black text-lg shadow-sm border border-sky-200 flex-shrink-0">{getInitial(student.name)}</div>
+                        <div className="flex-1 min-w-0">
+                            <p className="font-bold text-slate-800 text-sm truncate">{student.name}</p>
+                            <p className="text-[10px] font-bold text-slate-400 mt-0.5">NIS: {student.nis || '-'}</p>
+                            <div className="flex items-center gap-2 mt-2">
+                                <span className="px-2 py-0.5 bg-sky-50 text-[#0284C7] border border-sky-100 rounded-md text-[9px] font-black uppercase tracking-widest">{student.class_name}</span>
                             </div>
                         </div>
                     </div>
-                    <div className="flex items-center gap-0">
-                        <button onClick={() => showStudentModal(student)} className="p-2 text-[#0EA5E9]"><Pencil size={16} /></button>
-                        <button onClick={() => handleDelete(student.id, student.name)} className="p-2 text-[#EF4444]"><Trash2 size={16} /></button>
+                    <div className="flex flex-col gap-2">
+                        <button onClick={() => showStudentModal(student)} className="p-2.5 text-[#0EA5E9] bg-slate-50 rounded-xl"><Pencil size={18} /></button>
+                        <button onClick={() => handleDelete(student.id, student.name)} className="p-2.5 text-[#EF4444] bg-slate-50 rounded-xl"><Trash2 size={18} /></button>
                     </div>
                 </div>
             ))}
@@ -180,10 +255,12 @@ const StudentData: React.FC = () => {
         </div>
 
         {filteredStudents.length === 0 && (
-          <div className="text-center py-20 text-slate-400">
-            <Users size={40} className="mx-auto mb-4" />
-            <h4 className="font-bold">Data tidak ditemukan</h4>
-            <p className="text-xs">Coba ubah filter atau kata kunci pencarian Anda.</p>
+          <div className="text-center py-20">
+            <div className="w-20 h-20 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-4">
+                 <Users size={32} className="text-slate-300" />
+            </div>
+            <h4 className="font-bold text-slate-600">Data tidak ditemukan</h4>
+            <p className="text-xs text-slate-400 mt-1">Coba kata kunci lain atau tambahkan siswa baru.</p>
           </div>
         )}
       </div>

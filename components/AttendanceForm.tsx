@@ -6,9 +6,17 @@ import { supabase } from '../supabase';
 import { useData } from '../DataContext';
 
 const AttendanceForm: React.FC = () => {
-  const { students: allStudents, classes, attendance: allAttendance, loading } = useData();
+  const { students: allStudents, classes, attendance: allAttendance, loading, refreshData } = useData();
   const [selectedClass, setSelectedClass] = useState('');
-  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
+  
+  // Gunakan local timezone untuk default value
+  const getLocalDate = () => {
+    const d = new Date();
+    const offset = d.getTimezoneOffset() * 60000;
+    return new Date(d.getTime() - offset).toISOString().slice(0, 10);
+  };
+  
+  const [selectedDate, setSelectedDate] = useState(getLocalDate());
   const [submitting, setSubmitting] = useState(false);
 
   // Filter siswa berdasarkan kelas yang dipilih (Instan dari context)
@@ -97,14 +105,23 @@ const AttendanceForm: React.FC = () => {
 
     setSubmitting(true);
     try {
-      const upserts = Object.entries(localAttendance).map(([studentId, data]) => ({
-        student_id: studentId, status: data.status, note: data.note, date: selectedDate
-      }));
+      const upserts = Object.keys(localAttendance).map(studentId => {
+        const data = localAttendance[studentId];
+        return {
+          student_id: studentId,
+          status: data.status,
+          note: data.note,
+          date: selectedDate
+        };
+      });
       
       const { error } = await supabase.from('attendance').upsert(upserts, { onConflict: 'student_id, date' });
 
       if (error) throw error;
       
+      // INSTANT UPDATE
+      await refreshData();
+
       Swal.fire({ title: 'Berhasil!', text: 'Data absensi telah disimpan.', icon: 'success', confirmButtonColor: '#0EA5E9' });
     } catch (error: any) {
       Swal.fire('Ups!', error.message, 'error');

@@ -3,83 +3,60 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { FileSpreadsheet } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { supabase } from '../supabase';
+import { useData } from '../DataContext';
 
 const AttendanceList: React.FC = () => {
+  const { students: allStudents, attendance: allAttendance, classes, loading } = useData();
   const [reportType, setReportType] = useState<'daily' | 'monthly'>('monthly');
   const [selectedClass, setSelectedClass] = useState('');
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() + 1);
-  const [selectedYear, setSelectedYear] = useState(2026); // Default 2026
+  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   
-  const [students, setStudents] = useState<any[]>([]);
-  const [attendance, setAttendance] = useState<any[]>([]);
-  const [classInfo, setClassInfo] = useState<any>(null);
-  const [classes, setClasses] = useState<any[]>([]);
-  const [loading, setLoading] = useState(false);
-
+  // Set default class saat data tersedia
   useEffect(() => {
-    fetchClasses();
-  }, []);
-
-  useEffect(() => {
-    if (selectedClass) {
-      fetchReportData();
+    if (!selectedClass && classes.length > 0) {
+      setSelectedClass(classes[0].name);
     }
+  }, [classes, selectedClass]);
 
-    const channel = supabase.channel('attendance-list-realtime')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'attendance' }, () => fetchReportData())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'students' }, () => fetchReportData())
-      .subscribe();
-      
-    return () => {
-      supabase.removeChannel(channel);
-    }
-  }, [selectedClass, selectedMonth, selectedYear, selectedDate, reportType]);
+  // Filter Data Siswa berdasarkan kelas (Instan dari Memory)
+  const students = useMemo(() => {
+    if (!selectedClass) return [];
+    return allStudents.filter(s => s.class_name === selectedClass).sort((a, b) => a.name.localeCompare(b.name));
+  }, [allStudents, selectedClass]);
 
-  const fetchClasses = async () => {
-    const { data } = await supabase.from('classes').select('*');
-    if (data && data.length > 0) {
-      setClasses(data);
-      setSelectedClass(data[0].name);
-    }
-  };
+  // Filter Data Absensi berdasarkan periode (Instan dari Memory)
+  const attendance = useMemo(() => {
+    if (!selectedClass) return [];
+    
+    // Filter by date range
+    return allAttendance.filter(a => {
+        // Cek apakah data ini milik siswa di kelas yang dipilih?
+        // Kita perlu cek student_id nya ada di list students kelas ini
+        const isStudentInClass = students.some(s => s.id === a.student_id);
+        if (!isStudentInClass) return false;
 
-  const fetchReportData = async () => {
-    if (!selectedClass) return;
-    setLoading(true);
-    try {
-      const { data: stdData } = await supabase.from('students').select('*').eq('class_name', selectedClass).order('name');
-      const { data: clsData } = await supabase.from('classes').select('*').eq('name', selectedClass).single();
-      
-      let attQuery = supabase.from('attendance').select('*');
-      
-      if (reportType === 'monthly') {
-        const startDate = `${selectedYear}-${String(selectedMonth).padStart(2, '0')}-01`;
-        const lastDay = new Date(selectedYear, selectedMonth, 0).getDate();
-        const endDate = `${selectedYear}-${String(selectedMonth).padStart(2, '0')}-${lastDay}`;
-        attQuery = attQuery.gte('date', startDate).lte('date', endDate);
-      } else {
-        attQuery = attQuery.eq('date', selectedDate);
-      }
+        if (reportType === 'monthly') {
+            const d = new Date(a.date);
+            return d.getMonth() + 1 === selectedMonth && d.getFullYear() === selectedYear;
+        } else {
+            return a.date === selectedDate;
+        }
+    });
+  }, [allAttendance, students, reportType, selectedDate, selectedMonth, selectedYear, selectedClass]);
 
-      const { data: attData } = await attQuery;
-
-      setStudents(stdData || []);
-      setAttendance(attData || []);
-      setClassInfo(clsData);
-    } catch (error) {
-      console.error(error);
-    } finally {
-      setLoading(false);
-    }
-  };
+  // Info Guru/Kepsek dari kelas terpilih
+  const classInfo = useMemo(() => {
+    return classes.find(c => c.name === selectedClass) || null;
+  }, [classes, selectedClass]);
 
   const daysInMonth = useMemo(() => {
     const lastDay = new Date(selectedYear, selectedMonth, 0).getDate();
     return Array.from({ length: lastDay }, (_, i) => i + 1);
   }, [selectedMonth, selectedYear]);
 
+  // Transform Data untuk Tabel
   const pivotedData = useMemo(() => {
     return students.map(student => {
       const studentAtt = attendance.filter(a => a.student_id === student.id);
@@ -110,7 +87,7 @@ const AttendanceList: React.FC = () => {
     'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
   ];
 
-  const years = [2026, 2027, 2028, 2029, 2030];
+  const years = [2024, 2025, 2026, 2027, 2028, 2029, 2030];
   
   const handleDownloadPdf = () => {
     const doc = new jsPDF({
@@ -216,6 +193,8 @@ const AttendanceList: React.FC = () => {
     doc.save(`Laporan Absensi ${selectedClass} - ${reportType === 'daily' ? selectedDate : `${selectedYear}-${selectedMonth}`}.pdf`);
   };
 
+  if (loading && classes.length === 0) return <div className="p-10 text-center text-slate-400 font-bold animate-pulse">Menyiapkan Laporan...</div>;
+
   return (
     <div className="animate-in pb-10">
       <style>{`
@@ -259,7 +238,7 @@ const AttendanceList: React.FC = () => {
           <div className="space-y-1">
             <label className="text-[9px] font-bold text-slate-300 uppercase tracking-widest pl-1">KELAS</label>
             <select value={selectedClass} onChange={(e) => setSelectedClass(e.target.value)} className="w-full py-2.5 px-3 bg-slate-50 border border-slate-100 rounded-xl text-xs font-bold text-slate-600 outline-none">
-              <option value="">Pilih Kelas</option>
+              <option value="">-- Pilih Kelas --</option>
               {classes.map(c => <option key={c.name} value={c.name}>{c.name}</option>)}
             </select>
           </div>
@@ -326,7 +305,7 @@ const AttendanceList: React.FC = () => {
               </tr>
             </thead>
             <tbody>
-              {loading ? (
+              {loading && students.length === 0 ? (
                 <tr><td colSpan={reportType === 'monthly' ? daysInMonth.length + 6 : 4} className="p-10 text-center text-slate-300 italic font-bold">Memuat data...</td></tr>
               ) : pivotedData.map((student, idx) => (
                 <tr key={student.id} className="text-slate-800 hover:bg-slate-50/50">

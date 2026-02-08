@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo } from 'react';
 import { 
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell,
@@ -15,11 +16,15 @@ const Dashboard: React.FC = () => {
   const { students, classes, attendance, loading } = useData();
   const [activeSlice, setActiveSlice] = useState<any>(null);
 
-  // Kalkulasi data dashboard menggunakan useMemo agar instant
-  // Tidak ada fetching ulang ke Supabase di sini!
-  
+  // Helper untuk format tanggal lokal (YYYY-MM-DD) yang konsisten
+  const formatDateLocal = (date: Date) => {
+    const offset = date.getTimezoneOffset() * 60000;
+    const localISOTime = new Date(date.getTime() - offset).toISOString().slice(0, 10);
+    return localISOTime;
+  };
+
   const stats = useMemo(() => {
-    const today = new Date().toISOString().split('T')[0];
+    const today = formatDateLocal(new Date());
     const todayAttendance = attendance.filter(a => a.date === today);
     
     const presence = { hadir: 0, sakit: 0, izin: 0, alpha: 0 };
@@ -63,7 +68,7 @@ const Dashboard: React.FC = () => {
         if (map[s.class_name]) map[s.class_name].total++;
     });
     // Count today status
-    const today = new Date().toISOString().split('T')[0];
+    const today = formatDateLocal(new Date());
     const todayAttendance = attendance.filter(a => a.date === today);
     
     todayAttendance.forEach(a => {
@@ -88,7 +93,7 @@ const Dashboard: React.FC = () => {
     for (let i = 6; i >= 0; i--) {
         const d = new Date(today);
         d.setDate(today.getDate() - i);
-        const dateStr = d.toISOString().split('T')[0];
+        const dateStr = formatDateLocal(d);
         
         const dayAtt = attendance.filter(a => a.date === dateStr);
         const hadir = dayAtt.filter(a => a.status === 'Hadir').length;
@@ -106,26 +111,32 @@ const Dashboard: React.FC = () => {
   const monthlyTrendData = useMemo(() => {
     const now = new Date();
     const currentMonth = now.getMonth();
-    const daysInMonth = new Date(now.getFullYear(), currentMonth + 1, 0).getDate();
+    const currentYear = now.getFullYear();
+    const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
     const data = [];
 
+    // Reset jam untuk perbandingan tanggal yang akurat
+    const todayMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
     for (let i = 1; i <= daysInMonth; i++) {
-        const dateStr = new Date(now.getFullYear(), currentMonth, i).toISOString().split('T')[0];
-        // Skip future dates
-        if (new Date(dateStr) > now) break;
+        // Membuat objek tanggal untuk hari ke-i
+        const checkDate = new Date(currentYear, currentMonth, i);
+        const dateStr = formatDateLocal(checkDate);
+        
+        // Hentikan loop jika tanggal sudah melewati hari ini
+        if (checkDate > todayMidnight) break;
 
         const dayAtt = attendance.filter(a => a.date === dateStr);
-        // Persentase kehadiran harian (vs total siswa aktif)
+        // Persentase kehadiran harian
         let percent = 0;
         if (students.length > 0 && dayAtt.length > 0) {
             const hadir = dayAtt.filter(a => a.status === 'Hadir').length;
-            // Gunakan total siswa sebagai penyebut, atau total yg diabsen? 
-            // Biasanya total siswa.
+            // Gunakan jumlah siswa aktif sebagai pembagi
             percent = Math.round((hadir / students.length) * 100);
         }
         
         data.push({
-            name: `Tgl ${i}`,
+            name: `${i}`,
             persen: percent
         });
     }
@@ -133,11 +144,10 @@ const Dashboard: React.FC = () => {
   }, [attendance, students]);
 
   const showDetailModal = (status: string) => {
-    const today = new Date().toISOString().split('T')[0];
+    const today = formatDateLocal(new Date());
     const list = attendance.filter(a => a.date === today && a.status === status);
     const color = status === 'Hadir' ? 'text-[#22C55E]' : status === 'Sakit' ? 'text-[#0EA5E9]' : status === 'Izin' ? 'text-[#F59E0B]' : 'text-[#EF4444]';
     
-    // Perlu ambil nama siswa karena di attendance record context mungkin raw data
     const listWithNames = list.map(l => {
         const s = students.find(st => st.id === l.student_id);
         return { ...l, student_name: s?.name || 'Unknown' };
@@ -173,7 +183,7 @@ const Dashboard: React.FC = () => {
   };
 
   const pieData = useMemo(() => {
-    const hasData = Object.values(stats.todayPresence).some(v => v > 0);
+    const hasData = (Object.values(stats.todayPresence) as number[]).some(v => v > 0);
     if (!hasData) return [{ name: 'Data Kosong', value: 1, color: '#E0F2FE', percentage: 0 }];
     
     return [
