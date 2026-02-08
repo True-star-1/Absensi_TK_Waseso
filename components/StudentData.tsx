@@ -1,48 +1,14 @@
 
-import React, { useState, useEffect, useMemo } from 'react';
-import { Search, UserPlus, Pencil, Trash2, Filter, Users, CheckCircle2 } from 'lucide-react';
+import React, { useState, useMemo } from 'react';
+import { Search, UserPlus, Pencil, Trash2, Filter, Users } from 'lucide-react';
 import Swal from 'sweetalert2';
 import { supabase } from '../supabase';
+import { useData } from '../DataContext';
 
 const StudentData: React.FC = () => {
+  const { students, classes, loading } = useData();
   const [filter, setFilter] = useState('SEMUA');
   const [search, setSearch] = useState('');
-  const [students, setStudents] = useState<any[]>([]);
-  const [classes, setClasses] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    fetchClasses();
-    fetchStudents();
-
-    const channel = supabase.channel('student-data-realtime')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'students' }, (payload) => {
-        if (payload.eventType === 'INSERT') {
-          setStudents(currentStudents => [...currentStudents, payload.new].sort((a, b) => a.name.localeCompare(b.name)));
-        } else if (payload.eventType === 'UPDATE') {
-          setStudents(currentStudents => currentStudents.map(s => s.id === payload.new.id ? payload.new : s).sort((a, b) => a.name.localeCompare(b.name)));
-        } else if (payload.eventType === 'DELETE') {
-          setStudents(currentStudents => currentStudents.filter(s => s.id !== payload.old.id));
-        }
-      })
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, []);
-
-  const fetchClasses = async () => {
-    const { data } = await supabase.from('classes').select('name').order('name');
-    setClasses(data || []);
-  };
-
-  const fetchStudents = async () => {
-    setLoading(true);
-    const { data } = await supabase.from('students').select('*').order('name');
-    setStudents(data || []);
-    setLoading(false);
-  };
 
   const getInitial = (name: string) => {
     if (!name) return '?';
@@ -104,6 +70,7 @@ const StudentData: React.FC = () => {
       if (error) {
         Swal.fire('Gagal', 'NIS mungkin sudah terdaftar atau tidak valid.', 'error');
       }
+      // DataContext akan otomatis menangkap perubahan lewat realtime subscription
     } else if (formValues) {
       Swal.fire('Gagal', 'Semua kolom wajib diisi.', 'error');
     }
@@ -123,14 +90,14 @@ const StudentData: React.FC = () => {
       const { error } = await supabase.from('students').delete().eq('id', id);
       if (error) {
         Swal.fire('Gagal', 'Gagal menghapus data siswa.', 'error');
-      } else {
-        // PERBAIKAN: Langsung update state agar UI responsif
-        setStudents(currentStudents => currentStudents.filter(s => s.id !== id));
       }
+      // DataContext menangani update UI
     }
   };
 
   const filteredStudents = useMemo(() => students.filter(s => s.name.toLowerCase().includes(search.toLowerCase()) && (filter === 'SEMUA' || s.class_name === filter)), [students, search, filter]);
+
+  if (loading && students.length === 0) return <div className="p-10 text-center text-slate-400 font-bold animate-pulse">Memuat data siswa...</div>;
 
   return (
     <div className="animate-in fade-in duration-500">

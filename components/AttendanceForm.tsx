@@ -1,111 +1,52 @@
-import React, { useState, useEffect } from 'react';
-import { Calendar, Building2, Check, UserCheck, PencilLine, MessageSquare } from 'lucide-react';
+
+import React, { useState, useEffect, useMemo } from 'react';
+import { Calendar, Building2, UserCheck } from 'lucide-react';
 import Swal from 'sweetalert2';
 import { supabase } from '../supabase';
+import { useData } from '../DataContext';
 
 const AttendanceForm: React.FC = () => {
+  const { students: allStudents, classes, attendance: allAttendance, loading } = useData();
   const [selectedClass, setSelectedClass] = useState('');
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
-  const [students, setStudents] = useState<any[]>([]);
-  const [classes, setClasses] = useState<any[]>([]);
-  const [attendance, setAttendance] = useState<Record<string, { status: string, note: string }>>({});
-  const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
+  // Filter siswa berdasarkan kelas yang dipilih (Instan dari context)
+  const students = useMemo(() => {
+    return allStudents.filter(s => s.class_name === selectedClass && s.status === true);
+  }, [allStudents, selectedClass]);
+
+  // Siapkan map status absensi hari ini (Instan dari context)
+  const attendanceMap = useMemo(() => {
+    const map: Record<string, { status: string, note: string }> = {};
+    
+    // Inisialisasi kosong
+    students.forEach(s => {
+      map[s.id] = { status: '', note: '' };
+    });
+
+    // Isi dengan data yang ada di context (jika ada)
+    const records = allAttendance.filter(a => a.date === selectedDate);
+    records.forEach(r => {
+      if (map.hasOwnProperty(r.student_id)) {
+        map[r.student_id] = { status: r.status, note: r.note || '' };
+      }
+    });
+
+    return map;
+  }, [allAttendance, students, selectedDate]);
+
+  // Local state untuk perubahan yang belum disimpan (optimistic UI)
+  const [localAttendance, setLocalAttendance] = useState<Record<string, { status: string, note: string }>>({});
+
+  // Sync local state dengan data dari context saat pindah tanggal/kelas
   useEffect(() => {
-    fetchClasses();
-  }, []);
-
-  useEffect(() => {
-    if (selectedClass) {
-      fetchStudentsAndAttendance();
-    }
-
-    const channel = supabase
-      .channel('attendance-form-realtime')
-      .on('postgres_changes', 
-        { 
-          event: '*', 
-          schema: 'public', 
-          table: 'attendance',
-          filter: `date=eq.${selectedDate}`
-        }, 
-        (payload) => {
-          if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
-            const record = payload.new;
-            // Update state only if the student is in the current view
-            setAttendance(prev => {
-              if (prev.hasOwnProperty(record.student_id)) {
-                return {
-                  ...prev,
-                  [record.student_id]: { status: record.status, note: record.note }
-                };
-              }
-              return prev;
-            });
-          } else if (payload.eventType === 'DELETE') {
-            const record = payload.old;
-             setAttendance(prev => {
-              if (prev.hasOwnProperty(record.student_id)) {
-                return {
-                  ...prev,
-                  [record.student_id]: { status: '', note: '' }
-                };
-              }
-              return prev;
-            });
-          }
-        })
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-
-  }, [selectedClass, selectedDate]);
-
-  const fetchClasses = async () => {
-    const { data } = await supabase.from('classes').select('name');
-    setClasses(data || []);
-  };
+    setLocalAttendance(attendanceMap);
+  }, [attendanceMap]);
 
   const getInitial = (name: string) => {
     if (!name) return '?';
     return name.trim().charAt(0).toUpperCase();
-  };
-
-  const fetchStudentsAndAttendance = async () => {
-    setLoading(true);
-    try {
-      const { data: stdData } = await supabase
-        .from('students')
-        .select('*')
-        .eq('class_name', selectedClass)
-        .eq('status', true)
-        .order('name');
-      
-      const { data: attData } = await supabase
-        .from('attendance')
-        .select('*')
-        .eq('date', selectedDate)
-        .in('student_id', stdData?.map(s => s.id) || []);
-
-      setStudents(stdData || []);
-      
-      const attMap: Record<string, { status: string, note: string }> = {};
-      stdData?.forEach(s => {
-        const existing = attData?.find(a => a.student_id === s.id);
-        attMap[s.id] = {
-          status: existing?.status || '',
-          note: existing?.note || ''
-        };
-      });
-      setAttendance(attMap);
-    } catch (error) {
-      console.error(error);
-    } finally {
-      setLoading(false);
-    }
   };
 
   const askForNote = async (studentId: string, studentName: string, status: string) => {
@@ -114,7 +55,7 @@ const AttendanceForm: React.FC = () => {
       html: `<p class="text-xs font-bold text-slate-400 mb-4 uppercase tracking-widest">Murid: ${studentName}</p>`,
       input: 'text',
       inputPlaceholder: `Kenapa si kecil ${status.toLowerCase()} hari ini?`,
-      inputValue: attendance[studentId]?.note || '',
+      inputValue: localAttendance[studentId]?.note || '',
       showCancelButton: true,
       confirmButtonText: 'Simpan',
       cancelButtonText: 'Lewati',
@@ -132,7 +73,7 @@ const AttendanceForm: React.FC = () => {
   };
 
   const handleStatusChange = (studentId: string, status: string, note: string = '') => {
-    setAttendance(prev => ({
+    setLocalAttendance(prev => ({
       ...prev,
       [studentId]: { status, note: note || prev[studentId]?.note || '' }
     }));
@@ -148,7 +89,7 @@ const AttendanceForm: React.FC = () => {
 
   const handleSave = async () => {
     if (students.length === 0) return;
-    const unfinished = students.some(s => !attendance[s.id]?.status);
+    const unfinished = students.some(s => !localAttendance[s.id]?.status);
     if (unfinished) {
       Swal.fire({ title: 'Belum Lengkap!', text: 'Pastikan semua siswa telah diberi status kehadiran.', icon: 'warning', confirmButtonColor: '#0EA5E9' });
       return;
@@ -156,7 +97,7 @@ const AttendanceForm: React.FC = () => {
 
     setSubmitting(true);
     try {
-      const upserts = Object.entries(attendance).map(([studentId, data]) => ({
+      const upserts = Object.entries(localAttendance).map(([studentId, data]) => ({
         student_id: studentId, status: data.status, note: data.note, date: selectedDate
       }));
       
@@ -171,6 +112,8 @@ const AttendanceForm: React.FC = () => {
       setSubmitting(false);
     }
   };
+
+  if (loading && classes.length === 0) return <div className="p-10 text-center text-slate-400 font-bold animate-pulse">Menyiapkan form...</div>;
 
   return (
     <div className="animate-in fade-in duration-500 pb-20">
@@ -203,9 +146,9 @@ const AttendanceForm: React.FC = () => {
           <h3 className="text-lg font-bold text-slate-400 tracking-tight">Pilih kelas terlebih dahulu.</h3>
         </div>
       ) : (
-        <div className={`space-y-4 ${loading ? 'opacity-50' : ''}`}>
+        <div className={`space-y-4`}>
           {students.map((student) => {
-            const currentStatus = attendance[student.id]?.status;
+            const currentStatus = localAttendance[student.id]?.status;
             return (
               <div key={student.id} className={`bg-white rounded-[32px] border transition-all ${currentStatus ? 'border-sky-200 shadow-md' : 'border-[#E0F2FE]'}`}>
                 <div className="p-4 md:p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -215,7 +158,7 @@ const AttendanceForm: React.FC = () => {
                     </div>
                     <div>
                       <h4 className="font-bold text-slate-700 text-sm md:text-base">{student.name}</h4>
-                      {attendance[student.id]?.note && <p className="text-[10px] text-[#0284C7] italic">"{attendance[student.id]?.note}"</p>}
+                      {localAttendance[student.id]?.note && <p className="text-[10px] text-[#0284C7] italic">"{localAttendance[student.id]?.note}"</p>}
                     </div>
                   </div>
                   <div className="flex gap-1.5 bg-sky-50 p-1.5 rounded-[20px]">
@@ -227,11 +170,16 @@ const AttendanceForm: React.FC = () => {
               </div>
             );
           })}
-          <div className="pt-8">
-            <button onClick={handleSave} disabled={submitting} className="w-full py-6 bg-slate-900 text-white rounded-[32px] font-black text-xs uppercase tracking-widest active:scale-95 transition-all">
-              {submitting ? 'MENYIMPAN...' : 'SIMPAN ABSENSI'}
-            </button>
-          </div>
+          {students.length === 0 && (
+             <div className="py-10 text-center text-slate-400 font-medium">Belum ada siswa di kelas ini.</div>
+          )}
+          {students.length > 0 && (
+            <div className="pt-8">
+                <button onClick={handleSave} disabled={submitting} className="w-full py-6 bg-slate-900 text-white rounded-[32px] font-black text-xs uppercase tracking-widest active:scale-95 transition-all">
+                {submitting ? 'MENYIMPAN...' : 'SIMPAN ABSENSI'}
+                </button>
+            </div>
+          )}
         </div>
       )}
     </div>

@@ -1,258 +1,159 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 import { 
-  BarChart, 
-  Bar, 
-  XAxis, 
-  YAxis, 
-  Tooltip, 
-  ResponsiveContainer, 
-  Cell,
-  PieChart,
-  Pie,
-  AreaChart,
-  Area,
-  CartesianGrid
+  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell,
+  PieChart, Pie, AreaChart, Area, CartesianGrid
 } from 'recharts';
 import { 
-  Users, 
-  CheckCircle2, 
-  HeartPulse, 
-  HelpCircle, 
-  UserMinus,
-  Sparkles,
-  Clock,
-  LayoutDashboard,
-  ArrowRight,
-  TrendingUp,
-  BarChart2,
-  Check,
-  CalendarDays,
-  Calendar
+  CheckCircle2, HeartPulse, HelpCircle, UserMinus, Check, Calendar,
+  BarChart2, LayoutDashboard, ArrowRight, TrendingUp, CalendarDays,
+  Users
 } from 'lucide-react';
-import { supabase } from '../supabase';
 import Swal from 'sweetalert2';
+import { useData } from '../DataContext';
 
 const Dashboard: React.FC = () => {
-  const [stats, setStats] = useState({
-    totalStudents: 0,
-    tkA: 0,
-    tkB: 0,
-    todayPresence: { hadir: 0, sakit: 0, izin: 0, alpha: 0 }
-  });
-  const [monthlyPercentage, setMonthlyPercentage] = useState(0);
-  const [classAttendance, setClassAttendance] = useState<any[]>([]);
-  const [attendanceDetails, setAttendanceDetails] = useState<any[]>([]);
-  const [trendData, setTrendData] = useState<any[]>([]);
-  const [monthlyTrendData, setMonthlyTrendData] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { students, classes, attendance, loading } = useData();
   const [activeSlice, setActiveSlice] = useState<any>(null);
 
-  const fetchAllData = () => {
-    fetchDashboardData();
-    fetchTrendData();
-    fetchMonthlyStats();
-    fetchMonthlyTrendData();
-  };
-
-  useEffect(() => {
-    fetchAllData();
-
-    const channel = supabase.channel('dashboard-realtime')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'attendance' }, fetchAllData)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'students' }, fetchAllData)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'classes' }, fetchAllData)
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, []);
-
-  const fetchMonthlyStats = async () => {
-    try {
-      const now = new Date();
-      const firstDay = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
-      const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0];
-
-      const { data: monthlyAttendance } = await supabase
-        .from('attendance')
-        .select('status')
-        .gte('date', firstDay)
-        .lte('date', lastDay);
-
-      if (monthlyAttendance && monthlyAttendance.length > 0) {
-        const total = monthlyAttendance.length;
-        const present = monthlyAttendance.filter(a => a.status === 'Hadir').length;
-        setMonthlyPercentage(Math.round((present / total) * 100));
-      } else {
-        setMonthlyPercentage(0);
-      }
-    } catch (error) {
-      console.error('Error monthly stats:', error);
-    }
-  };
-
-  const fetchDashboardData = async () => {
-    try {
-      const today = new Date().toISOString().split('T')[0];
-      const { data: students } = await supabase.from('students').select('*');
-      const { data: attendanceToday } = await supabase
-        .from('attendance')
-        .select('*, students(name, class_name)')
-        .eq('date', today);
-
-      const presence = { hadir: 0, sakit: 0, izin: 0, alpha: 0 };
-      const classMap: any = {};
-      
-      const { data: classes } = await supabase.from('classes').select('name');
-      classes?.forEach(c => {
-        classMap[c.name] = { name: c.name, hadir: 0, sakit: 0, izin: 0, alfa: 0, total: 0 };
-      });
-      
-      students?.forEach(s => {
-        if (classMap[s.class_name]) classMap[s.class_name].total++;
-      });
-
-      attendanceToday?.forEach(a => {
-        const status = a.status.toLowerCase();
-        const cName = a.students?.class_name;
-        
-        if (status === 'hadir') presence.hadir++;
-        if (status === 'sakit') presence.sakit++;
-        if (status === 'izin') presence.izin++;
-        if (status === 'alfa') presence.alpha++;
-
-        if (cName && classMap[cName]) {
-          const key = status === 'alpha' ? 'alfa' : status;
-          if (classMap[cName][key] !== undefined) {
-            classMap[cName][key]++;
-          }
-        }
-      });
-
-      setAttendanceDetails(attendanceToday || []);
-      setClassAttendance(Object.values(classMap));
-      setStats({
-        totalStudents: students?.length || 0,
-        tkA: (students?.filter(s => s.class_name === 'TK A') || []).length,
-        tkB: (students?.filter(s => s.class_name === 'TK B') || []).length,
-        todayPresence: presence
-      });
-    } catch (error) {
-      console.error('Error dashboard:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const fetchTrendData = async () => {
-    try {
-      const today = new Date();
-      const sevenDaysAgo = new Date(today);
-      sevenDaysAgo.setDate(today.getDate() - 6);
-
-      const { data: attendanceData, error } = await supabase
-        .from('attendance')
-        .select('date, status')
-        .gte('date', sevenDaysAgo.toISOString().split('T')[0])
-        .lte('date', today.toISOString().split('T')[0]);
-
-      if (error) throw error;
-      
-      const trendMap = new Map();
-      for (let i = 0; i < 7; i++) {
-        const date = new Date(today);
-        date.setDate(today.getDate() - i);
-        const dateString = date.toISOString().split('T')[0];
-        const dayName = date.toLocaleDateString('id-ID', { weekday: 'short' });
-        trendMap.set(dateString, { name: dayName, hadir: 0, absen: 0 });
-      }
-
-      attendanceData.forEach(record => {
-        const dayData = trendMap.get(record.date);
-        if (dayData) {
-          if (record.status === 'Hadir') {
-            dayData.hadir++;
-          } else {
-            dayData.absen++;
-          }
-        }
-      });
-      
-      const sortedTrendData = Array.from(trendMap.values()).reverse();
-      setTrendData(sortedTrendData);
-      
-    } catch (err) {
-      console.error('Error fetching trend data:', err);
-    }
-  };
-
-  const fetchMonthlyTrendData = async () => {
-    const now = new Date();
-    const year = now.getFullYear();
-    const month = now.getMonth();
-    const firstDayOfMonth = new Date(year, month, 1).toISOString().split('T')[0];
-    const lastDayOfMonth = new Date(year, month + 1, 0).toISOString().split('T')[0];
-    const daysInMonth = new Date(year, month + 1, 0).getDate();
-
-    const { data: students, error: studentError } = await supabase.from('students').select('id');
-    const totalStudents = students?.length || 0;
-    if (totalStudents === 0) return;
-
-    const { data, error } = await supabase
-      .from('attendance')
-      .select('date, status')
-      .gte('date', firstDayOfMonth)
-      .lte('date', lastDayOfMonth);
+  // Kalkulasi data dashboard menggunakan useMemo agar instant
+  // Tidak ada fetching ulang ke Supabase di sini!
+  
+  const stats = useMemo(() => {
+    const today = new Date().toISOString().split('T')[0];
+    const todayAttendance = attendance.filter(a => a.date === today);
     
-    if (error) {
-      console.error('Error fetching monthly trend data:', error);
-      return;
+    const presence = { hadir: 0, sakit: 0, izin: 0, alpha: 0 };
+    todayAttendance.forEach(a => {
+        const s = a.status.toLowerCase();
+        if (s === 'hadir') presence.hadir++;
+        if (s === 'sakit') presence.sakit++;
+        if (s === 'izin') presence.izin++;
+        if (s === 'alfa') presence.alpha++;
+    });
+
+    return {
+        totalStudents: students.length,
+        todayPresence: presence
+    };
+  }, [students, attendance]);
+
+  const monthlyPercentage = useMemo(() => {
+    const now = new Date();
+    const currentMonth = now.getMonth();
+    const currentYear = now.getFullYear();
+    
+    const monthlyData = attendance.filter(a => {
+        const d = new Date(a.date);
+        return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
+    });
+
+    if (monthlyData.length === 0) return 0;
+    const present = monthlyData.filter(a => a.status === 'Hadir').length;
+    return Math.round((present / monthlyData.length) * 100);
+  }, [attendance]);
+
+  const classAttendance = useMemo(() => {
+    const map: any = {};
+    // Init classes
+    classes.forEach(c => {
+        map[c.name] = { name: c.name, hadir: 0, sakit: 0, izin: 0, alfa: 0, total: 0 };
+    });
+    // Count totals
+    students.forEach(s => {
+        if (map[s.class_name]) map[s.class_name].total++;
+    });
+    // Count today status
+    const today = new Date().toISOString().split('T')[0];
+    const todayAttendance = attendance.filter(a => a.date === today);
+    
+    todayAttendance.forEach(a => {
+        // Cari kelas siswa ini dari data siswa (karena di relasi attendance kadang hanya ID)
+        const student = students.find(s => s.id === a.student_id);
+        const className = student?.class_name;
+        
+        if (className && map[className]) {
+            const s = a.status.toLowerCase();
+            if (s === 'hadir') map[className].hadir++;
+            if (s === 'sakit') map[className].sakit++;
+            if (s === 'izin') map[className].izin++;
+            if (s === 'alfa') map[className].alfa++;
+        }
+    });
+    return Object.values(map);
+  }, [classes, students, attendance]);
+
+  const trendData = useMemo(() => {
+    const data = [];
+    const today = new Date();
+    for (let i = 6; i >= 0; i--) {
+        const d = new Date(today);
+        d.setDate(today.getDate() - i);
+        const dateStr = d.toISOString().split('T')[0];
+        
+        const dayAtt = attendance.filter(a => a.date === dateStr);
+        const hadir = dayAtt.filter(a => a.status === 'Hadir').length;
+        const absen = dayAtt.filter(a => a.status !== 'Hadir').length;
+        
+        data.push({
+            name: d.toLocaleDateString('id-ID', { weekday: 'short' }),
+            hadir,
+            absen
+        });
     }
+    return data;
+  }, [attendance]);
 
-    const dailyAttendance = new Map();
-    data.forEach(att => {
-      const day = new Date(att.date).getDate();
-      if (!dailyAttendance.has(day)) {
-        dailyAttendance.set(day, { hadir: 0 });
-      }
-      if (att.status === 'Hadir') {
-        dailyAttendance.get(day).hadir++;
-      }
-    });
+  const monthlyTrendData = useMemo(() => {
+    const now = new Date();
+    const currentMonth = now.getMonth();
+    const daysInMonth = new Date(now.getFullYear(), currentMonth + 1, 0).getDate();
+    const data = [];
 
-    const trend = Array.from({ length: daysInMonth }, (_, i) => {
-      const day = i + 1;
-      const attendanceForDay = dailyAttendance.get(day);
-      const hadirCount = attendanceForDay ? attendanceForDay.hadir : 0;
-      return {
-        name: `Tgl ${day}`,
-        persen: Math.round((hadirCount / totalStudents) * 100)
-      };
-    });
-    setMonthlyTrendData(trend);
-  };
+    for (let i = 1; i <= daysInMonth; i++) {
+        const dateStr = new Date(now.getFullYear(), currentMonth, i).toISOString().split('T')[0];
+        // Skip future dates
+        if (new Date(dateStr) > now) break;
 
-  const attendancePercentage = useMemo(() => {
-    if (stats.totalStudents === 0) return 0;
-    return Math.round((stats.todayPresence.hadir / stats.totalStudents) * 100);
-  }, [stats]);
+        const dayAtt = attendance.filter(a => a.date === dateStr);
+        // Persentase kehadiran harian (vs total siswa aktif)
+        let percent = 0;
+        if (students.length > 0 && dayAtt.length > 0) {
+            const hadir = dayAtt.filter(a => a.status === 'Hadir').length;
+            // Gunakan total siswa sebagai penyebut, atau total yg diabsen? 
+            // Biasanya total siswa.
+            percent = Math.round((hadir / students.length) * 100);
+        }
+        
+        data.push({
+            name: `Tgl ${i}`,
+            persen: percent
+        });
+    }
+    return data;
+  }, [attendance, students]);
 
   const showDetailModal = (status: string) => {
-    const list = attendanceDetails.filter(a => a.status === status);
+    const today = new Date().toISOString().split('T')[0];
+    const list = attendance.filter(a => a.date === today && a.status === status);
     const color = status === 'Hadir' ? 'text-[#22C55E]' : status === 'Sakit' ? 'text-[#0EA5E9]' : status === 'Izin' ? 'text-[#F59E0B]' : 'text-[#EF4444]';
     
+    // Perlu ambil nama siswa karena di attendance record context mungkin raw data
+    const listWithNames = list.map(l => {
+        const s = students.find(st => st.id === l.student_id);
+        return { ...l, student_name: s?.name || 'Unknown' };
+    });
+
     Swal.fire({
       title: `<span class="font-black text-slate-800">Detail Murid ${status}</span>`,
       html: `
         <div class="text-left mt-4 max-h-[300px] overflow-y-auto custom-scrollbar pr-2">
-          ${list.length > 0 
-            ? list.map((item, idx) => `
+          ${listWithNames.length > 0 
+            ? listWithNames.map((item, idx) => `
                 <div class="flex items-center justify-between py-3 border-b border-sky-50 last:border-0">
                   <div class="flex items-center gap-3">
                     <div class="w-8 h-8 rounded-lg bg-sky-50 flex items-center justify-center font-black text-sky-400 text-xs">${idx + 1}</div>
                     <div>
-                      <p class="font-bold text-slate-700 text-sm">${item.students?.name}</p>
+                      <p class="font-bold text-slate-700 text-sm">${item.student_name}</p>
                     </div>
                   </div>
                   <span class="text-[9px] font-black ${color} uppercase tracking-widest">${status}</span>
@@ -322,19 +223,7 @@ const Dashboard: React.FC = () => {
     return null;
   };
 
-  const CustomStudentCountTooltip = ({ active, payload, label }: any) => {
-    if (active && payload && payload.length) {
-      return (
-        <div className="bg-white p-3 rounded-2xl shadow-lg border border-[#E0F2FE] min-w-[120px] text-center">
-          <p className="font-bold text-slate-700 text-sm">{label}</p>
-          <p className="text-xs text-[#0284C7] font-medium">Total Siswa: 
-            <span className="font-bold"> {payload[0].value}</span>
-          </p>
-        </div>
-      );
-    }
-    return null;
-  };
+  if (loading) return <div className="p-10 text-center text-slate-400 font-bold animate-pulse">Menyiapkan Dashboard...</div>;
 
   return (
     <div className="animate-in fade-in duration-700 pb-20">
@@ -386,7 +275,7 @@ const Dashboard: React.FC = () => {
             </div>
             <p className={`text-[10px] font-black ${item.text} tracking-[0.15em] mb-1`}>{item.label}</p>
             <div className="flex items-center justify-between">
-              <h4 className="text-4xl font-black text-slate-800 tracking-tighter">{loading ? '...' : item.val}</h4>
+              <h4 className="text-4xl font-black text-slate-800 tracking-tighter">{item.val}</h4>
               <ArrowRight size={16} className="text-sky-100 group-hover:text-[#38BDF8] transition-colors" />
             </div>
           </button>
@@ -408,7 +297,7 @@ const Dashboard: React.FC = () => {
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E0F2FE" />
                 <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#94a3b8', fontSize: 11, fontWeight: 900}} dy={15} />
                 <YAxis axisLine={false} tickLine={false} tick={{fill: '#94a3b8', fontSize: 11, fontWeight: 900}} />
-                <Tooltip cursor={{fill: '#F0F9FF', radius: 12}} content={<CustomStudentCountTooltip />} />
+                <Tooltip cursor={{fill: '#F0F9FF', radius: 12}} content={<CustomBarTooltip />} />
                 <Bar name="Total Siswa" dataKey="total" fill="#38BDF8" radius={[12, 12, 0, 0]} barSize={60} />
               </BarChart>
             </ResponsiveContainer>
@@ -422,7 +311,9 @@ const Dashboard: React.FC = () => {
           </div>
           <div className="flex-1 relative flex items-center justify-center">
             <div className={`absolute inset-0 flex flex-col items-center justify-center pointer-events-none transition-all duration-300 ${activeSlice !== null ? 'opacity-0 scale-90' : 'opacity-100 scale-100'}`}>
-              <span className="text-5xl font-black text-slate-800 tracking-tighter">{loading ? '--' : attendancePercentage}%</span>
+              <span className="text-5xl font-black text-slate-800 tracking-tighter">
+                {stats.totalStudents > 0 ? Math.round((stats.todayPresence.hadir / stats.totalStudents) * 100) : 0}%
+              </span>
               <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] mt-2">HADIR</span>
             </div>
             <ResponsiveContainer width="100%" height="100%">

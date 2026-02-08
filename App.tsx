@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { HashRouter, Routes, Route, Link, useLocation } from 'react-router-dom';
 import { 
@@ -8,7 +9,7 @@ import {
   ClipboardList, 
   RefreshCw,
   LogOut,
-  ClipboardCheck as AppIcon, // Mengganti nama import untuk logo
+  ClipboardCheck as AppIcon,
   Menu,
   X
 } from 'lucide-react';
@@ -18,24 +19,28 @@ import AttendanceList from './components/AttendanceList';
 import StudentData from './components/StudentData';
 import ClassData from './components/ClassData';
 import Swal from 'sweetalert2';
+import { DataProvider, useData } from './DataContext'; // Import Provider
 
 const SyncPage = () => {
-  const handleSync = () => {
+  const { refreshData } = useData();
+  
+  const handleSync = async () => {
     Swal.fire({
       title: 'Sinkronisasi...',
-      text: 'Menghubungkan ke server database',
+      text: 'Memastikan data terbaru dari server...',
       allowOutsideClick: false,
       didOpen: () => {
         Swal.showLoading();
-        setTimeout(() => {
-          Swal.fire({
-            title: 'Berhasil!',
-            text: 'Data telah disinkronkan dengan server.',
-            icon: 'success',
-            confirmButtonColor: '#0EA5E9'
-          });
-        }, 1500);
       }
+    });
+
+    await refreshData();
+    
+    Swal.fire({
+      title: 'Berhasil!',
+      text: 'Aplikasi telah sinkron sepenuhnya.',
+      icon: 'success',
+      confirmButtonColor: '#0EA5E9'
     });
   };
 
@@ -45,18 +50,18 @@ const SyncPage = () => {
         <RefreshCw size={28} />
       </div>
       <h2 className="text-lg font-black text-slate-800 tracking-tight">Sinkronisasi Cloud</h2>
-      <p className="text-slate-400 text-[11px] font-medium mt-1 max-w-[200px]">Data dicadangkan secara real-time ke database.</p>
+      <p className="text-slate-400 text-[11px] font-medium mt-1 max-w-[200px]">Data disinkronkan otomatis di latar belakang.</p>
       <button 
         onClick={handleSync}
         className="mt-6 w-full max-w-[200px] py-3 bg-[#38BDF8] hover:bg-[#0EA5E9] text-white rounded-xl font-black text-xs shadow-lg shadow-sky-100 transition-all active:scale-95 uppercase tracking-widest"
       >
-        Sinkron Manual
+        Paksa Sinkron
       </button>
     </div>
   );
 };
 
-const App: React.FC = () => {
+const AppContent: React.FC = () => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const location = useLocation();
 
@@ -176,10 +181,15 @@ const App: React.FC = () => {
   );
 };
 
-const AppWrapper = () => (
-  <HashRouter>
-    <App />
-  </HashRouter>
-);
+// Wrap App dengan DataProvider
+const App: React.FC = () => {
+  return (
+    <DataProvider>
+      <HashRouter>
+        <AppContent />
+      </HashRouter>
+    </DataProvider>
+  );
+};
 
-export default AppWrapper;
+export default App;

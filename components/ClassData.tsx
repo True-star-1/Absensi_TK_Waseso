@@ -1,39 +1,12 @@
 
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { Building2, Pencil, Trash2, User, Plus } from 'lucide-react';
 import Swal from 'sweetalert2';
 import { supabase } from '../supabase';
+import { useData } from '../DataContext';
 
 const ClassData: React.FC = () => {
-  const [classes, setClasses] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => { 
-    fetchClasses();
-
-    const channel = supabase.channel('class-data-realtime')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'classes' }, (payload) => {
-        if (payload.eventType === 'INSERT') {
-          setClasses(currentClasses => [...currentClasses, payload.new].sort((a, b) => a.name.localeCompare(b.name)));
-        } else if (payload.eventType === 'UPDATE') {
-          setClasses(currentClasses => currentClasses.map(c => c.id === payload.new.id ? payload.new : c).sort((a, b) => a.name.localeCompare(b.name)));
-        } else if (payload.eventType === 'DELETE') {
-          setClasses(currentClasses => currentClasses.filter(c => c.id !== payload.old.id));
-        }
-      })
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, []);
-
-  const fetchClasses = async () => {
-    setLoading(true);
-    const { data } = await supabase.from('classes').select('*').order('name');
-    if (data) setClasses(data);
-    setLoading(false);
-  };
+  const { classes, loading } = useData();
 
   const showClassModal = async (existingClass?: any) => {
     const isEdit = !!existingClass;
@@ -102,6 +75,7 @@ const ClassData: React.FC = () => {
       } else {
         await supabase.from('classes').insert([payload]);
       }
+      // DataContext menangani update UI
     } else if (formValues) {
         Swal.fire('Gagal', 'Nama Kelas wajib diisi.', 'error');
     }
@@ -121,12 +95,11 @@ const ClassData: React.FC = () => {
       const { error } = await supabase.from('classes').delete().eq('id', id);
       if (error) {
         Swal.fire('Gagal', 'Gagal menghapus data kelas.', 'error');
-      } else {
-        // PERBAIKAN: Langsung update state agar UI responsif
-        setClasses(currentClasses => currentClasses.filter(c => c.id !== id));
       }
     }
   };
+
+  if (loading && classes.length === 0) return <div className="p-10 text-center text-slate-400 font-bold animate-pulse">Memuat data kelas...</div>;
 
   return (
     <div className="animate-in fade-in duration-500">
